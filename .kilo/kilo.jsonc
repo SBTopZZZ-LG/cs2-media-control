@@ -1,0 +1,6 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "commit_message": {
+    "prompt": "Use conventional git commit messages ONLY, unless the User explicitly says not to. Use one of the following: `feat`, `refactor`, `fix`, `chore`, `docs`, `ci` and `test`. Never do breaking changes commit, unless the user tells you to do so explicitly. Look at the project from a high level, identify consistent components, which you can use as scope in your git commit messages. After adding the prefix and the optional scope, begin the actual message with a lowercase character, for example, \"feat: add user authentication middlewares\", not \"feat: Add user authentication middlewares\". For the extra details in a git commit message, do not use bullet points, numbering, or listing at all. Only include a maximum of two paragraphs each with up to a maximum of ~60 words. Avoid using multiple sentences separated by periods (.) in the top level git message, but you can include sentences in the extra details below. For example, \"feat: add user authentication middlewares. add unit tests.\" this is bad, it should be \"feat: add user authentication, and add unit tests\". Use proper grammars in the summary, if there are multiple things that you want to address in the summary, use commas (,) to separate them, and include the final \"and\" before the last item."
+  }
+}
