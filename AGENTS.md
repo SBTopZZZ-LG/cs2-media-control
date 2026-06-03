@@ -35,6 +35,7 @@ No tests, linter, formatter, type-checker, CI, or pre-commit hooks exist. Don't 
   - Spectating detection: `provider.steamid != player.steamid`. Local account is `provider`.
   - Round-phase handling: `over` → resume; `freezetime` (alive) → pause; `live` → driven by death/spectate. There is an explicit `should_play = True` override for `round_phase == 'over'` after the live branch — don't remove it.
 - Key press only fires on a `should_play != media_is_playing` transition. Press always goes through `press_media_key`; the app has no way to query Spotify/YouTube, so initial state assumes "playing". If the player and app get out of sync, the user must press Play/Pause once to realign (documented in README).
+- **The resume path is delayed by `RESUME_DELAY_MS` (2000ms), the pause path is instant.** When the player dies or the round ends (`should_play` → True), the key press and the auto-focus switch both fire 2s later via a `root.after()` job. The state machine updates `media_is_playing` immediately so subsequent payloads see a consistent state. A new transition (e.g., respawn within the 2s window) calls `after_cancel` on the pending job and pauses immediately. Toggling the `is_enabled` checkbox off also cancels any pending resume. The label shows "RESUMING IN 2s" (orange) during the delay, then "PLAYING" (green).
 - `is_enabled` (`tk.BooleanVar`) gates GUI updates and logging only — it does **not** stop the Flask server. Webhook traffic still arrives and `process_payload` still runs.
 
 ## Editing tips
@@ -42,3 +43,18 @@ No tests, linter, formatter, type-checker, CI, or pre-commit hooks exist. Don't 
 - Keep the Flask `uri` in `gamestate_integration_media.cfg` and `PORT`/`HOST` in `cs2_media_control.py` in sync; both are `127.0.0.1:3000`.
 - `build_exe.ps1` expects to be run from the repo root (uses relative `venv\`, `dist\`, etc.).
 - The committed `CS2MediaControl.exe` should not be edited by hand — rebuild via the script.
+- Use `.venv\Scripts\python.exe` (not the system Python) for any local check — the project venv is at `.venv/`.
+
+## Auto-focus feature (added)
+
+GUI exposes a second checkbox ("Auto-focus between CS2 and the selected media window") and a custom `WindowPicker` dropdown. When enabled, on every media-state transition the app also calls `SetForegroundWindow`:
+- `should_play == True` (dead / round over) → focus the selected media window.
+- `should_play == False` (alive) → focus CS2 (matched by window title containing `"Counter-Strike"`).
+
+**Selection identity is the executable path, not the hwnd or title.** Rationale: YouTube/browser tabs change their window title on every video, which would break a title-keyed identity, and hwnds are reused when an app restarts. Each window is stored as `(hwnd, title, exe_path, photoimage)`. On `refresh()` the picker keeps the same hwnd if it's still in the list, otherwise falls back to the first enumerated window of the same exe (topmost in z-order), otherwise marks the selection **stale** — the picker button shows `(stale: <exe> closed - pick again)` and `_apply_focus` skips the focus call.
+
+A periodic 5-second `refresh()` runs while auto-focus is enabled, so the stale state surfaces within a few seconds of the user closing the media app. `GetForegroundWindow` is called with the `AttachThreadInput` trick to bypass the Windows foreground lock; this still fails on some systems without admin — logged, not raised.
+
+## Icon extraction gotcha
+
+`hicon_to_photoimage` uses `CreateDIBSection` (a real 32bpp DIB) rather than `CreateCompatibleBitmap` (a DDB). `DrawIconEx` + `GetDIBits` on a DDB returns zeroed alpha, which composites to solid white and makes icons appear blank. The DIB section is read directly via `ctypes.c_ubyte * nbytes.from_address(bits_ptr)` and written to the `tk.PhotoImage` with one `img.put(...)` per pixel (the brace-row `data=` string format is rejected by this Tk build).
