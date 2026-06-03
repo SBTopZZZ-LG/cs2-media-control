@@ -4,16 +4,16 @@ $ErrorActionPreference = "Stop"
 Write-Host "Checking for virtual environment..." -ForegroundColor Cyan
 
 # 1. Create/Check Virtual Environment
-if (-not (Test-Path "venv")) {
-    Write-Host "Creating virtual environment 'venv'..." -ForegroundColor Yellow
-    python -m venv venv
+if (-not (Test-Path ".venv")) {
+    Write-Host "Creating virtual environment '.venv'..." -ForegroundColor Yellow
+    python -m venv .venv
 } else {
     Write-Host "Virtual environment found." -ForegroundColor Green
 }
 
 # 2. Activate Virtual Environment
 Write-Host "Activating virtual environment..." -ForegroundColor Cyan
-& ".\venv\Scripts\Activate.ps1"
+& ".\.venv\Scripts\Activate.ps1"
 
 # 3. Install Requirements
 Write-Host "Installing requirements..." -ForegroundColor Cyan
