@@ -8,7 +8,7 @@ Windows-only single-file Python GUI app. Listens on `127.0.0.1:3000` for Counter
 - `gamestate_integration_media.cfg` — CS2 GSI config. `uri` must stay `http://127.0.0.1:3000/` to match the Flask server.
 - `build_exe.ps1` — build flow.
 - `install_config.ps1` — installs the `.cfg` into CS2.
-- `requirements.txt` — only `flask` (no `pyinstaller`; the build script installs it itself).
+- `requirements.txt` — only `flask` + SMTC winrt pkgs (no `pyinstaller`; the build script installs it itself).
 
 No tests, linter, formatter, type-checker, CI, or pre-commit hooks exist. Don't invent them.
 
@@ -58,3 +58,7 @@ A periodic 5-second `refresh()` runs while auto-focus is enabled, so the stale s
 ## Icon extraction gotcha
 
 `hicon_to_photoimage` uses `CreateDIBSection` (a real 32bpp DIB) rather than `CreateCompatibleBitmap` (a DDB). `DrawIconEx` + `GetDIBits` on a DDB returns zeroed alpha, which composites to solid white and makes icons appear blank. The DIB section is read directly via `ctypes.c_ubyte * nbytes.from_address(bits_ptr)` and written to the `tk.PhotoImage` with one `img.put(...)` per pixel (the brace-row `data=` string format is rejected by this Tk build).
+
+## Multi-source media control (SMTC)
+
+Optional path toggled by the `Media Sources` checkbox (nested in `Controls`, above `Auto-Focus`). When on, pause/resume goes through per-session `TryPauseAsync`/`TryPlayAsync` instead of `press_media_key` (never both). Selection lives in `MediaSourcePicker.checked`, keyed by AUMID (opt-in: new sources start unchecked); pause snapshots `PLAYING`-among-checked into `_paused_snapshot`, the delayed resume job carries `(use_smtc, snapshot)` and replays only that set. Stale AUMIDs yield `GONE (no live session)` log lines, per-source `ERR`s are logged not raised. `winrt` import is lazy (`_SMTC_AVAILABLE` flag) so the app still runs legacy without the pkgs. SMTC status reads lag ~2s behind the `Try*` bool -- never assert on an immediate re-read.

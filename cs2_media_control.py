@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext
+import asyncio
 import threading
 from flask import Flask, request
 import logging
@@ -23,6 +24,107 @@ def press_media_key():
         ctypes.windll.user32.keybd_event(0xB3, 0, 2, 0) # Key Up
     except Exception as e:
         print(f"Failed to press media key: {e}")
+
+
+# --- Multi-source media control via SMTC (optional path) ---
+#
+# The legacy path synthesizes VK_MEDIA_PLAY_PAUSE, which only toggles the single
+# "current" session. This path instead enumerates every System Media Transport
+# Controls session and pauses/resumes each selected one individually, so
+# Spotify + YouTube (etc.) are all handled at once with discrete play/pause
+# (no toggle-desync). Requires the winrt projection packages; if the import
+# fails the app keeps working on the legacy path.
+
+_SMTC_AVAILABLE = False
+_SMTC_IMPORT_ERROR = None
+try:
+    from winrt.windows.media.control import (
+        GlobalSystemMediaTransportControlsSessionManager as _SessionManager,
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus as _PlaybackStatus,
+    )
+    _SMTC_AVAILABLE = True
+except Exception as _e:
+    _SMTC_IMPORT_ERROR = _e
+
+
+def _run_winrt(coro):
+    """Run a WinRT awaitable to completion on the calling thread (brief; GUI-safe)."""
+    async def _wrapper():
+        return await coro
+    return asyncio.run(_wrapper())
+
+
+def _require_smtc():
+    if not _SMTC_AVAILABLE:
+        raise RuntimeError(f"SMTC unavailable: {_SMTC_IMPORT_ERROR}")
+
+
+async def _smtc_fetch_async():
+    mgr = await _SessionManager.request_async()
+    out = []
+    for s in mgr.get_sessions():
+        try:
+            aumid = s.source_app_user_model_id or ""
+        except Exception:
+            continue
+        if not aumid:
+            continue
+        try:
+            status = int(s.get_playback_info().playback_status)
+        except Exception:
+            status = -1
+        title = ""
+        try:
+            props = await s.try_get_media_properties_async()
+            title = (props.title or "").strip()
+        except Exception:
+            pass
+        out.append((aumid, status, title))
+    return out
+
+
+def smtc_list_sources():
+    """Return [(aumid, status_int, title), ...] for all live SMTC sessions."""
+    _require_smtc()
+    return _run_winrt(_smtc_fetch_async())
+
+
+async def _smtc_set_play_async(aumids, play):
+    mgr = await _SessionManager.request_async()
+    live = {}
+    for s in mgr.get_sessions():
+        try:
+            live.setdefault(s.source_app_user_model_id or "", []).append(s)
+        except Exception:
+            continue
+    res = {}
+    for aumid in aumids:
+        sessions = live.get(aumid, [])
+        if not sessions:
+            # Stale selection: the app closed (or has no session) since.
+            res[aumid] = "GONE (no live session)"
+            continue
+        for s in sessions:
+            try:
+                if play:
+                    res[aumid] = bool(await s.try_play_async())
+                else:
+                    res[aumid] = bool(await s.try_pause_async())
+            except Exception as e:
+                res[aumid] = f"ERR {e}"
+    return res
+
+
+def smtc_pause_sources(aumids):
+    """Pause the live sessions for the given AUMIDs. Returns {aumid: True|reason}."""
+    _require_smtc()
+    return _run_winrt(_smtc_set_play_async(list(aumids), False))
+
+
+def smtc_resume_sources(aumids):
+    """Resume (play) the live sessions for the given AUMIDs. Returns {aumid: True|reason}."""
+    _require_smtc()
+    return _run_winrt(_smtc_set_play_async(list(aumids), True))
 
 
 # --- Window enumeration / focus helpers (auto-focus feature) ---
@@ -397,11 +499,186 @@ class WindowPicker(tk.Frame):
                 pass
             self._click_bind_id = None
 
+class MediaSourcePicker(tk.Frame):
+    """Button + pop-up checklist for SMTC media sessions (multi-source control).
+
+    Check state is keyed by AUMID (source_app_user_model_id), so it survives
+    title changes and app restarts. Newly seen AUMIDs start unchecked (opt-in).
+    Checked-but-absent AUMIDs are shown as "(not running)" rows so the user can
+    uncheck them; at action time they are skipped with a log line.
+    """
+
+    STATUS_NAMES = {0: "Closed", 1: "Opened", 2: "Changing", 3: "Stopped",
+                    4: "Playing", 5: "Paused"}
+
+    def __init__(self, parent, button_width=38, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.sources = []  # list of (aumid, status, title)
+        self.checked = {}  # aumid -> bool (persists across refreshes)
+        self.dropdown = None
+        self._click_bind_id = None
+        self._row_vars = {}
+
+        self.button = ttk.Button(self, text="(Select sources...)", width=button_width,
+                                 command=self.toggle_dropdown)
+        self.button.pack(side="left", padx=(0, 5))
+        self.refresh_btn = ttk.Button(self, text="Refresh", width=8, command=self.refresh)
+        self.refresh_btn.pack(side="left")
+
+    def set_enabled(self, enabled):
+        state = "normal" if enabled else "disabled"
+        self.button.config(state=state)
+        self.refresh_btn.config(state=state)
+        if not enabled:
+            self.hide_dropdown()
+
+    def get_checked(self):
+        """Return the set of checked AUMIDs (may include not-running ones)."""
+        return {a for a, on in self.checked.items() if on}
+
+    def refresh(self):
+        """Re-enumerate live sessions. Returns an error string, or None on success."""
+        try:
+            self.sources = smtc_list_sources()
+        except Exception as e:
+            self.sources = []
+            self._update_button_text(error=True)
+            return str(e)
+        for aumid, _status, _title in self.sources:
+            self.checked.setdefault(aumid, False)
+        self._update_button_text()
+        return None
+
+    def _row_label(self, aumid, title, status):
+        base = aumid
+        if title:
+            t = title if len(title) <= 50 else title[:47] + "..."
+            base = f"{aumid} -- {t}"
+        return f"{base} ({self.STATUS_NAMES.get(status, status)})"
+
+    def _update_button_text(self, error=False):
+        if error:
+            self.button.config(text="(sources unavailable - winrt pkgs missing?)")
+            return
+        on = sorted(self.get_checked())
+        if not on:
+            self.button.config(text="(Select sources...)")
+            return
+        live = {a for a, _, _ in self.sources}
+        missing = sum(1 for a in on if a not in live)
+        label = ", ".join(on)
+        if len(label) > 55:
+            label = f"{len(on)} sources selected"
+        if missing:
+            label += f" ({missing} not running)"
+        self.button.config(text=label)
+
+    def _on_row_toggle(self, aumid, var):
+        self.checked[aumid] = bool(var.get())
+        self._update_button_text()
+
+    def _sync_row_vars(self):
+        for aumid, var in self._row_vars.items():
+            var.set(self.checked.get(aumid, False))
+        self._update_button_text()
+
+    def _select_all(self):
+        for aumid, _, _ in self.sources:
+            self.checked[aumid] = True
+        self._sync_row_vars()
+
+    def _select_none(self):
+        for aumid in list(self.checked):
+            self.checked[aumid] = False
+        self._sync_row_vars()
+
+    def toggle_dropdown(self):
+        if self.dropdown and self.dropdown.winfo_exists():
+            self.hide_dropdown()
+        else:
+            self.show_dropdown()
+
+    def show_dropdown(self):
+        self.hide_dropdown()
+        self.refresh()  # fresh list on open; any error shows on the button
+        self.dropdown = tk.Toplevel(self)
+        self.dropdown.wm_overrideredirect(True)
+        x = self.button.winfo_rootx()
+        y = self.button.winfo_rooty() + self.button.winfo_height() + 2
+        self.dropdown.wm_geometry(f"+{x}+{y}")
+
+        outer = ttk.Frame(self.dropdown, relief="solid", borderwidth=1)
+        outer.pack(fill="both", expand=True)
+
+        footer = ttk.Frame(outer)
+        footer.pack(side="bottom", fill="x", padx=5, pady=4)
+        ttk.Button(footer, text="All", width=6, command=self._select_all).pack(side="left", padx=2)
+        ttk.Button(footer, text="None", width=6, command=self._select_none).pack(side="left", padx=2)
+
+        canvas = tk.Canvas(outer, width=420, height=240, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(win_id, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        self._row_vars = {}
+        live = {a for a, _, _ in self.sources}
+        rows = [(aumid, title, status, True) for aumid, status, title in self.sources]
+        for aumid in sorted(self.get_checked() - live):
+            rows.append((aumid, "", -1, False))
+        if not rows:
+            ttk.Label(inner, text="(no media sources - start Spotify/YouTube)").pack(padx=10, pady=10)
+        else:
+            for aumid, title, status, is_live in rows:
+                var = tk.BooleanVar(value=self.checked.get(aumid, False))
+                self._row_vars[aumid] = var
+                if is_live:
+                    text = self._row_label(aumid, title, status)
+                else:
+                    text = f"{aumid} (not running)"
+                ttk.Checkbutton(inner, text=text, variable=var,
+                                command=lambda a=aumid, v=var: self._on_row_toggle(a, v)
+                                ).pack(anchor="w", fill="x", padx=8, pady=2)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        self.dropdown.bind("<Escape>", lambda _e: self.hide_dropdown())
+
+        top = self.winfo_toplevel()
+        self._click_bind_id = top.bind("<Button-1>", self._on_global_click, add="+")
+
+    def _on_global_click(self, event):
+        if not self.dropdown or not self.dropdown.winfo_exists():
+            return
+        for w in (self.dropdown, self.button):
+            try:
+                wx, wy = w.winfo_rootx(), w.winfo_rooty()
+                ww, wh = w.winfo_width(), w.winfo_height()
+            except Exception:
+                continue
+            if wx <= event.x_root <= wx + ww and wy <= event.y_root <= wy + wh:
+                return
+        self.after(50, self.hide_dropdown)
+
+    def hide_dropdown(self):
+        if self.dropdown and self.dropdown.winfo_exists():
+            self.dropdown.destroy()
+        self.dropdown = None
+        if self._click_bind_id:
+            try:
+                self.winfo_toplevel().unbind("<Button-1>", self._click_bind_id)
+            except Exception:
+                pass
+            self._click_bind_id = None
+
 class CS2MediaApp:
     def __init__(self, root):
         self.root = root
         self.root.title("CS2 Media Controller")
-        self.root.geometry("600x400")
+        self.root.geometry("600x520")
         
         # Application State
         self.media_is_playing = True # assume media is playing initially or let user toggle
@@ -410,6 +687,10 @@ class CS2MediaApp:
         self.current_score = -1
         self.has_died_this_round = False
         self.round_in_progress = False
+
+        # Multi-source (SMTC) state
+        self.multi_enabled = tk.BooleanVar(value=False)
+        self._paused_snapshot = []  # AUMIDs paused by us on the SMTC path; resumed later
 
         # Auto-focus state
         self.auto_focus_enabled = tk.BooleanVar(value=False)
@@ -422,9 +703,26 @@ class CS2MediaApp:
         control_frame.pack(fill="x", padx=10, pady=5)
         ttk.Checkbutton(control_frame, text="Enable Auto-Resume/Pause", variable=self.is_enabled, command=self.on_enable_toggle).pack(anchor="w", padx=5, pady=5)
 
-        # Auto-Focus controls
-        focus_frame = ttk.LabelFrame(root, text="Auto-Focus")
-        focus_frame.pack(fill="x", padx=10, pady=5)
+        # Multi-source controls (nested inside Controls, above Auto-Focus)
+        sources_frame = ttk.LabelFrame(control_frame, text="Media Sources")
+        sources_frame.pack(fill="x", padx=5, pady=(0, 5))
+        ttk.Checkbutton(
+            sources_frame,
+            text="Control multiple media sources (pause/resume each app, not just one)",
+            variable=self.multi_enabled,
+            command=self.on_multi_toggle,
+        ).pack(anchor="w", padx=5, pady=(5, 2))
+        sources_row = ttk.Frame(sources_frame)
+        sources_row.pack(fill="x", padx=5, pady=(0, 5))
+        ttk.Label(sources_row, text="Sources:").pack(side="left", padx=(0, 5))
+        self.source_picker = MediaSourcePicker(sources_row, button_width=42)
+        self.source_picker.pack(side="left", fill="x", expand=True)
+        self.source_picker.refresh()
+        self.source_picker.set_enabled(False)
+
+        # Auto-Focus controls (nested inside Controls)
+        focus_frame = ttk.LabelFrame(control_frame, text="Auto-Focus")
+        focus_frame.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Checkbutton(
             focus_frame,
             text="Auto-focus between CS2 and the selected media window",
@@ -475,6 +773,7 @@ class CS2MediaApp:
              if self._pending_resume_job:
                  self.root.after_cancel(self._pending_resume_job)
                  self._pending_resume_job = None
+             self._paused_snapshot = []
 
     def on_auto_focus_toggle(self):
         enabled = self.auto_focus_enabled.get()
@@ -483,11 +782,12 @@ class CS2MediaApp:
             self.log("Auto-focus enabled.")
             self.last_focus_hwnd = None
             self._apply_focus(self.media_is_playing)
-            self._schedule_refresh()
+            if not self._refresh_job:
+                self._schedule_refresh()
         else:
             self.log("Auto-focus disabled.")
             self.last_focus_hwnd = None
-            if self._refresh_job:
+            if not self.multi_enabled.get() and self._refresh_job:
                 self.root.after_cancel(self._refresh_job)
                 self._refresh_job = None
 
@@ -500,18 +800,91 @@ class CS2MediaApp:
         # Force a focus switch on the next state transition rather than immediately
         self.last_focus_hwnd = None
 
+    def on_multi_toggle(self):
+        enabled = self.multi_enabled.get()
+        self.source_picker.set_enabled(enabled)
+        if enabled and not self._refresh_job:
+            self._schedule_refresh()
+        if enabled:
+            if not _SMTC_AVAILABLE:
+                self.log("Multi-source enabled, but SMTC unavailable (winrt pkgs missing). Install requirements to use it.")
+            else:
+                err = self.source_picker.refresh()
+                if err:
+                    self.log(f"Multi-source enabled, but listing sources failed: {err}")
+                else:
+                    n = len(self.source_picker.get_checked())
+                    self.log(f"Multi-source enabled (SMTC). {n} source(s) checked - only checked sources are paused/resumed.")
+                    # Prime the snapshot if media is believed playing: covers enabling
+                    # mid-round (e.g. while dead) where no pause transition will precede
+                    # the next resume.
+                    try:
+                        live = smtc_list_sources()
+                        playing_val = int(_PlaybackStatus.PLAYING)
+                        wanted = self.source_picker.get_checked()
+                        prime = sorted({a for a, st, _t in live if st == playing_val and a in wanted})
+                        if prime:
+                            self._paused_snapshot = prime
+                            self.log(f"Multi-source snapshot primed: {prime}")
+                    except Exception as e:
+                        self.log(f"Multi-source snapshot prime failed: {e}")
+        else:
+            self.log("Multi-source disabled (legacy media-key path).")
+            self._paused_snapshot = []
+            if not self.auto_focus_enabled.get() and self._refresh_job:
+                self.root.after_cancel(self._refresh_job)
+                self._refresh_job = None
+
+    def _pause_smtc_sources(self):
+        """Snapshot PLAYING-among-checked sessions and pause them. Per-source errors logged."""
+        try:
+            sources = smtc_list_sources()
+        except Exception as e:
+            self.log(f"Multi-source pause FAILED (could not list sources): {e}")
+            return
+        try:
+            playing_val = int(_PlaybackStatus.PLAYING)
+        except Exception:
+            playing_val = 4
+        wanted = self.source_picker.get_checked()
+        targets = sorted({a for a, st, _t in sources if st == playing_val and a in wanted})
+        if not targets:
+            # Keep any earlier snapshot: nothing is playing right now (e.g. a legacy
+            # keypress or the user paused manually), so there is nothing new to record.
+            # Wiping here would strand a pending resume set and skip the next resume.
+            self.log("Multi-source pause: nothing PLAYING among checked sources (keeping prior snapshot).")
+            return
+        self._paused_snapshot = targets
+        try:
+            res = smtc_pause_sources(targets)
+        except Exception as e:
+            self.log(f"Multi-source pause FAILED: {e}")
+            return
+        for aumid, ok in res.items():
+            if ok is not True:
+                self.log(f"Multi-source pause issue on '{aumid}': {ok}")
+        self.log(f"Multi-source paused: {targets}")
+
     def on_window_stale(self):
         exe_name = self.window_picker.selected_exe.rsplit("\\", 1)[-1] \
             if self.window_picker.selected_exe else "selected window"
         self.log(f"Auto-focus WARNING: {exe_name} is no longer running. Pick a new window.")
 
     def _schedule_refresh(self):
-        if not self.auto_focus_enabled.get():
+        if not (self.auto_focus_enabled.get() or self.multi_enabled.get()):
             return
-        # Don't disrupt the user if the dropdown is open
-        dd = self.window_picker.dropdown
-        if not (dd and dd.winfo_exists()):
-            self.window_picker.refresh()
+        # Don't disrupt the user if a dropdown is open
+        if self.auto_focus_enabled.get():
+            dd = self.window_picker.dropdown
+            if not (dd and dd.winfo_exists()):
+                self.window_picker.refresh()
+        if self.multi_enabled.get():
+            dd2 = self.source_picker.dropdown
+            if not (dd2 and dd2.winfo_exists()):
+                try:
+                    self.source_picker.refresh()
+                except Exception:
+                    pass
         self._refresh_job = self.root.after(5000, self._schedule_refresh)
 
     def _apply_focus(self, should_play):
@@ -684,27 +1057,78 @@ class CS2MediaApp:
             # state. The actual key press + focus switch may be delayed (see below).
             self.media_is_playing = should_play
 
+            use_smtc = self.multi_enabled.get() and _SMTC_AVAILABLE
+            if self.multi_enabled.get() and not _SMTC_AVAILABLE:
+                self.log("Multi-source unavailable (winrt pkgs missing) - using media key instead.")
+
             if should_play:
-                # Resume path: delay the key press AND the focus switch by RESUME_DELAY_MS.
-                # The player just died or the round just ended — give them a moment before
-                # media kicks back in and the window steals focus.
+                # Resume path: delay the action by RESUME_DELAY_MS (key press OR per-source
+                # resume) AND the focus switch. The SMTC snapshot was taken on the pause path.
                 self.media_state_label.config(
                     text=f"Media Control: RESUMING IN {RESUME_DELAY_MS // 1000}s",
                     foreground="orange")
                 self._pending_resume_job = self.root.after(
-                    RESUME_DELAY_MS, self._do_delayed_resume, reason, debug_vals)
+                    RESUME_DELAY_MS, self._do_delayed_resume,
+                    use_smtc, list(self._paused_snapshot), reason, debug_vals)
             else:
                 # Pause path: instant. The player respawned and wants to be in the game.
-                press_media_key()
+                if use_smtc:
+                    self._pause_smtc_sources()
+                else:
+                    self._paused_snapshot = []
+                    press_media_key()
                 self.media_state_label.config(
                     text="Media Control: PAUSED", foreground="red")
                 self._apply_focus(should_play)
 
-    def _do_delayed_resume(self, reason, debug_vals):
+    def _do_delayed_resume(self, use_smtc, snapshot, reason, debug_vals):
         self._pending_resume_job = None
         # Defensive: if the app was disabled mid-delay, or the state somehow flipped
         # without canceling the job, do nothing.
         if not self.is_enabled.get() or not self.media_is_playing:
+            return
+        if use_smtc:
+            self._paused_snapshot = []
+            if snapshot:
+                try:
+                    res = smtc_resume_sources(snapshot)
+                except Exception as e:
+                    self.log(f"Multi-source resume FAILED: {e}")
+                    return
+                for aumid, ok in res.items():
+                    if ok is not True:
+                        self.log(f"Multi-source resume issue on '{aumid}': {ok}")
+                self.log(f"Media resumed after {RESUME_DELAY_MS // 1000}s delay (multi-source): {snapshot}. Reason: {reason} {debug_vals}")
+            elif self.source_picker is not None:
+                # Snapshot empty (never saw a pause, or state desynced): fall back to
+                # resuming checked sources that are currently paused. Self-heals the
+                # toggle-desync instead of stranding the user in silence.
+                try:
+                    live = smtc_list_sources()
+                except Exception as e:
+                    self.log(f"Media resume skipped (multi-source snapshot empty, list failed: {e}). Reason: {reason} {debug_vals}")
+                    live = None
+                if live is not None:
+                    try:
+                        paused_val = int(_PlaybackStatus.PAUSED)
+                    except Exception:
+                        paused_val = 5
+                    wanted = self.source_picker.get_checked()
+                    fb = sorted({a for a, st, _t in live if st == paused_val and a in wanted})
+                    if fb:
+                        self.log(f"Multi-source resume fallback (snapshot empty, resuming paused+checked): {fb}")
+                        try:
+                            res = smtc_resume_sources(fb)
+                        except Exception as e:
+                            self.log(f"Multi-source resume FAILED: {e}")
+                            res = {}
+                        for aumid, ok in res.items():
+                            if ok is not True:
+                                self.log(f"Multi-source resume issue on '{aumid}': {ok}")
+                    else:
+                        self.log(f"Media resume skipped (multi-source snapshot empty, nothing paused+checked). Reason: {reason} {debug_vals}")
+            self._apply_focus(True)  # delayed focus switch to the media window
+            self.media_state_label.config(text="Media Control: PLAYING", foreground="green")
             return
         press_media_key()
         self._apply_focus(True)  # delayed focus switch to the media window

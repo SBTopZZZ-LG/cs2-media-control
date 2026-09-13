@@ -6,6 +6,7 @@ This simple Python GUI application automatically pauses and resumes your media (
 - **Auto-Respect**: Pauses media when the round starts or you respawn.
 - **Downtime Entertainment**: Resumes media when you die or the round ends.
 - **Visual Status**: Shows connection status and game state in a window.
+- **Multi-Source (optional)**: Pause/resume each selected app (Spotify + browser) via Windows SMTC instead of the single media key.
 
 ## Installation
 
