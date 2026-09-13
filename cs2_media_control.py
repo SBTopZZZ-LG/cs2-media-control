@@ -708,7 +708,7 @@ class CS2MediaApp:
         sources_frame.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Checkbutton(
             sources_frame,
-            text="Control multiple media sources (pause/resume each app, not just one)",
+            text="Control multiple media sources",
             variable=self.multi_enabled,
             command=self.on_multi_toggle,
         ).pack(anchor="w", padx=5, pady=(5, 2))
