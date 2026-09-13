@@ -706,12 +706,13 @@ class CS2MediaApp:
         # Multi-source controls (nested inside Controls, above Auto-Focus)
         sources_frame = ttk.LabelFrame(control_frame, text="Media Sources")
         sources_frame.pack(fill="x", padx=5, pady=(0, 5))
-        ttk.Checkbutton(
+        self.multi_check = ttk.Checkbutton(
             sources_frame,
             text="Control multiple media sources",
             variable=self.multi_enabled,
             command=self.on_multi_toggle,
-        ).pack(anchor="w", padx=5, pady=(5, 2))
+        )
+        self.multi_check.pack(anchor="w", padx=5, pady=(5, 2))
         sources_row = ttk.Frame(sources_frame)
         sources_row.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Label(sources_row, text="Sources:").pack(side="left", padx=(0, 5))
@@ -723,12 +724,13 @@ class CS2MediaApp:
         # Auto-Focus controls (nested inside Controls)
         focus_frame = ttk.LabelFrame(control_frame, text="Auto-Focus")
         focus_frame.pack(fill="x", padx=5, pady=(0, 5))
-        ttk.Checkbutton(
+        self.autofocus_check = ttk.Checkbutton(
             focus_frame,
             text="Auto-focus between CS2 and the selected media window",
             variable=self.auto_focus_enabled,
             command=self.on_auto_focus_toggle,
-        ).pack(anchor="w", padx=5, pady=(5, 2))
+        )
+        self.autofocus_check.pack(anchor="w", padx=5, pady=(5, 2))
         picker_row = ttk.Frame(focus_frame)
         picker_row.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Label(picker_row, text="Media window:").pack(side="left", padx=(0, 5))
@@ -765,9 +767,15 @@ class CS2MediaApp:
         self.start_server()
 
     def on_enable_toggle(self):
-        status = "Enabled" if self.is_enabled.get() else "Disabled"
+        enabled = self.is_enabled.get()
+        status = "Enabled" if enabled else "Disabled"
         self.log(f"Application {status} by user.")
-        if not self.is_enabled.get():
+        state = "normal" if enabled else "disabled"
+        self.multi_check.config(state=state)
+        self.autofocus_check.config(state=state)
+        self.source_picker.set_enabled(enabled and self.multi_enabled.get())
+        self.window_picker.set_enabled(enabled and self.auto_focus_enabled.get())
+        if not enabled:
              self.media_state_label.config(text="Media Control: DISABLED", foreground="gray")
              # Cancel any pending delayed resume so it doesn't fire while disabled
              if self._pending_resume_job:
