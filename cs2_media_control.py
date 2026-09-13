@@ -834,11 +834,17 @@ class CS2MediaApp:
                         if prime:
                             self._paused_snapshot = prime
                             self.log(f"Multi-source snapshot primed: {prime}")
+                        live_checked = [st for a, st, _t in live if a in wanted]
+                        if live_checked:
+                            self.media_is_playing = any(st == playing_val for st in live_checked)
+                            self.log("Assumed media state synced on enable: " + ('PLAYING' if self.media_is_playing else 'PAUSED'))
                     except Exception as e:
                         self.log(f"Multi-source snapshot prime failed: {e}")
         else:
             self.log("Multi-source disabled (legacy media-key path).")
-            self._paused_snapshot = []
+            if self._pending_resume_job:
+                self.root.after_cancel(self._pending_resume_job)
+                self._pending_resume_job = None
             if not self.auto_focus_enabled.get() and self._refresh_job:
                 self.root.after_cancel(self._refresh_job)
                 self._refresh_job = None
@@ -1065,9 +1071,12 @@ class CS2MediaApp:
             # state. The actual key press + focus switch may be delayed (see below).
             self.media_is_playing = should_play
 
-            use_smtc = self.multi_enabled.get() and _SMTC_AVAILABLE
+            checked_now = self.source_picker.get_checked() if self.multi_enabled.get() else set()
+            use_smtc = bool(checked_now) and _SMTC_AVAILABLE
             if self.multi_enabled.get() and not _SMTC_AVAILABLE:
                 self.log("Multi-source unavailable (winrt pkgs missing) - using media key instead.")
+            elif self.multi_enabled.get() and not checked_now:
+                self.log("Multi-source on but no sources checked - using media key instead.")
 
             if should_play:
                 # Resume path: delay the action by RESUME_DELAY_MS (key press OR per-source
