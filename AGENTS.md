@@ -15,7 +15,7 @@ No tests, linter, formatter, type-checker, CI, or pre-commit hooks exist. Don't 
 ## Setup / run
 
 - Dev: `pip install -r requirements.txt && python cs2_media_control.py`.
-- Build EXE: run `build_exe.ps1` (PowerShell). It creates `venv/`, installs `flask` + `pyinstaller`, runs `pyinstaller --noconsole --onefile --name CS2MediaControl cs2_media_control.py`, copies `dist\CS2MediaControl.exe` to repo root, then deletes `build/`, `dist/`, and the `.spec` file. The root `CS2MediaControl.exe` is gitignored; the one currently committed is stale.
+- Build EXE: run `build_exe.ps1` (PowerShell). It creates `venv/`, installs `flask` + `pyinstaller`, runs `pyinstaller --noconsole --onefile --name CS2MediaControl --collect-submodules winrt cs2_media_control.py` (`--collect-submodules` is required: the `winrt` shims are PEP-420 namespaces the static graph misses; verified via `pyi-archive_viewer` that `PYZ.pyz` contains them), copies `dist\CS2MediaControl.exe` to repo root, then deletes `build/`, `dist/`, and the `.spec` file. The root `CS2MediaControl.exe` is gitignored; the one currently committed is stale.
 - Install GSI config: run `install_config.ps1`. It reads the install path from `HKLM:\SOFTWARE\WOW6432Node\Valve\cs2` and copies the `.cfg` to `<cs2>\game\csgo\cfg`. Fails without admin or if CS2 isn't installed at the standard registry path. CS2 must be restarted after install.
 
 ## Platform constraints

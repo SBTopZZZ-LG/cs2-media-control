@@ -25,7 +25,7 @@ Write-Host "Building EXE with PyInstaller..." -ForegroundColor Cyan
 # --noconsole: No terminal window
 # --onefile: Single EXE file
 # --name: Name of the output file
-pyinstaller --noconsole --onefile --name "CS2MediaControl" cs2_media_control.py
+pyinstaller --noconsole --onefile --name "CS2MediaControl" --collect-submodules winrt cs2_media_control.py
 
 # 5. Cleanup and Move
 Write-Host "Cleaning up..." -ForegroundColor Cyan
