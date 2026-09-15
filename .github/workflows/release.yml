@@ -1,7 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # release.yml — Build, tag, and release CS2MediaControl.exe
 #
-# Triggered on every push to main.
+# Triggered when the CI workflow finishes on main (never on CI failure),
+# plus manual dispatch. Runs only if CI concluded success.
 #
 # Release flow (version-gated, no manual tags needed):
 #   1. Read version from version.txt
@@ -19,7 +20,11 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - main
   workflow_dispatch:
@@ -29,6 +34,8 @@ jobs:
   check:
     name: Check version
     runs-on: ubuntu-latest
+    # Skipped needs propagate: if check is skipped, release is skipped too.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     outputs:
       version: ${{ steps.read.outputs.version }}
       tag_exists: ${{ steps.check_tag.outputs.tag_exists }}
@@ -36,7 +43,10 @@ jobs:
       prev_version: ${{ steps.commits.outputs.prev_version }}
       commit_count: ${{ steps.commits.outputs.commit_count }}
     steps:
+      # Build the exact commit CI ran on (empty on dispatch → default ref).
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Read version from version.txt
         id: read
@@ -114,6 +124,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5

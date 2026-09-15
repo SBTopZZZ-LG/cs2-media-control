@@ -10,7 +10,7 @@ Windows-only single-file Python GUI app. Listens on `127.0.0.1:3000` for Counter
 - `install_config.ps1` — installs the `.cfg` into CS2.
 - `requirements.txt` — only `flask` + SMTC winrt pkgs (no `pyinstaller`; the build script installs it itself).
 - `assets/` — bundled data files (GitHub mark for the footer link); baked into the EXE via `--add-data`, resolved at runtime with `resource_path()` (`sys._MEIPASS` under PyInstaller).
-- `version.txt` — release source of truth (semver). Bumping it + pushing to `main` triggers the release workflow: Windows EXE build, `v<version>` git tag, GitHub Release with the EXE attached. Pushes without a bump skip.
+- `version.txt` — release source of truth (semver). Bumping it + pushing to `main` triggers CI, and once CI passes the release workflow runs: Windows EXE build, `v<version>` git tag, GitHub Release with the EXE attached. Pushes without a bump skip.
 - `poc/` — throwaway POC scripts (each with a header docstring); not shipped in the EXE.
 - `.github/workflows/` — `ci.yml` (runs the same pre-commit hooks as `make lint`), `release.yml` (version-gated build + release).
 

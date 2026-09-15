@@ -47,7 +47,7 @@ Automatically pauses your music while you're alive in Counter-Strike 2 and bring
 
 ## Releases
 
-Each release ships a `CS2MediaControl-v<version>.zip` as a GitHub Release download, containing the built EXE, `install_config.ps1`, and the GSI `.cfg` (everything the tool needs to run). The version lives in `version.txt` at the repo root, and CI handles everything else: pushing a bumped `version.txt` to `main` builds the EXE on Windows, bundles the ZIP, creates the `v<version>` git tag, and publishes the release with a commit log. Pushing without a version bump skips the release.
+Each release ships a `CS2MediaControl-v<version>.zip` as a GitHub Release download, containing the built EXE, `install_config.ps1`, and the GSI `.cfg` (everything the tool needs to run). The version lives in `version.txt` at the repo root, and CI handles everything else: pushing a bumped `version.txt` to `main` runs CI, and once that passes builds the EXE on Windows, bundles the ZIP, creates the `v<version>` git tag, and publishes the release with a commit log. Pushing without a version bump, or with failing CI, skips the release.
 
 ## License
 
