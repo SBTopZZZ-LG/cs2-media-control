@@ -1,10 +1,13 @@
 import asyncio
 import ctypes
 import logging
+import os
 import struct
+import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from ctypes import wintypes
 from tkinter import scrolledtext, ttk
 
@@ -13,10 +16,17 @@ from flask import Flask, request
 # Configuration
 PORT = 3000
 HOST = "127.0.0.1"
+REPO_URL = "https://github.com/SBTopZZZ-LG/cs2-media-control"
 # Delay (ms) between detecting a "resume media" state (player dead / round over) and actually
 # pressing the play key + switching focus. Gives the player a moment after dying before media
 # kicks back in. The pause path (respawn) is instant.
 RESUME_DELAY_MS = 2000
+
+
+def resource_path(rel):
+    """Path to a bundled data file. Works from source and PyInstaller onefile."""
+    base = getattr(sys, "_MEIPASS", os.path.abspath(os.path.dirname(__file__)))
+    return os.path.join(base, rel)
 
 
 def press_media_key():
@@ -854,6 +864,19 @@ class CS2MediaApp:
         )
         self.media_state_label.pack(anchor="w", padx=5)
 
+        # Footer with GitHub repo link (bottom-right). Packed before the
+        # expanding log frame so it keeps its space when the window is short.
+        footer = ttk.Frame(root)
+        footer.pack(side="bottom", fill="x", padx=10, pady=(0, 5))
+        self._github_icon_src, self._github_icon = self._load_github_icon()
+        ttk.Button(
+            footer,
+            text="GitHub",
+            image=self._github_icon,
+            compound="left",
+            command=lambda: webbrowser.open(REPO_URL),
+        ).pack(side="right")
+
         # Log
         log_frame = ttk.LabelFrame(root, text="Event Log (Newest Top)")
         log_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -864,6 +887,19 @@ class CS2MediaApp:
 
         # Start Server
         self.start_server()
+
+    @staticmethod
+    def _load_github_icon():
+        """Load assets/github-mark.png downscaled to ~20px. Returns (src, small);
+        (None, None) when the file is missing so the button falls back to text."""
+        try:
+            src = tk.PhotoImage(
+                file=resource_path(os.path.join("assets", "github-mark.png"))
+            )
+            return src, src.subsample(28, 28)  # 560px -> 20px
+        except Exception as e:
+            print(f"GitHub icon not loaded: {e}")
+            return None, None
 
     def on_enable_toggle(self):
         enabled = self.is_enabled.get()

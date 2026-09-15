@@ -9,6 +9,7 @@ Windows-only single-file Python GUI app. Listens on `127.0.0.1:3000` for Counter
 - `build_exe.ps1` — build flow.
 - `install_config.ps1` — installs the `.cfg` into CS2.
 - `requirements.txt` — only `flask` + SMTC winrt pkgs (no `pyinstaller`; the build script installs it itself).
+- `assets/` — bundled data files (GitHub mark for the footer link); baked into the EXE via `--add-data`, resolved at runtime with `resource_path()` (`sys._MEIPASS` under PyInstaller).
 - `version.txt` — release source of truth (semver). Bumping it + pushing to `main` triggers the release workflow: Windows EXE build, `v<version>` git tag, GitHub Release with the EXE attached. Pushes without a bump skip.
 - `poc/` — throwaway POC scripts (each with a header docstring); not shipped in the EXE.
 - `.github/workflows/` — `ci.yml` (runs the same pre-commit hooks as `make lint`), `release.yml` (version-gated build + release).
@@ -18,7 +19,7 @@ Tooling: `pre-commit` (ruff lint + ruff-format + mdformat + whitespace hygiene) 
 ## Setup / run
 
 - Dev: `pip install -r requirements.txt && python cs2_media_control.py`.
-- Build EXE: run `build_exe.ps1` (PowerShell). It creates `venv/`, installs `flask` + `pyinstaller`, runs `pyinstaller --noconsole --onefile --name CS2MediaControl --collect-submodules winrt cs2_media_control.py` (`--collect-submodules` is required: the `winrt` shims are PEP-420 namespaces the static graph misses; verified via `pyi-archive_viewer` that `PYZ.pyz` contains them), copies `dist\CS2MediaControl.exe` to repo root, then deletes `build/`, `dist/`, and the `.spec` file. The root `CS2MediaControl.exe` is gitignored; the one currently committed is stale.
+- Build EXE: run `build_exe.ps1` (PowerShell). It creates `venv/`, installs `flask` + `pyinstaller`, runs `pyinstaller --noconsole --onefile --name CS2MediaControl --collect-submodules winrt --add-data "assets;assets" cs2_media_control.py` (`--collect-submodules` is required: the `winrt` shims are PEP-420 namespaces the static graph misses; verified via `pyi-archive_viewer` that `PYZ.pyz` contains them), copies `dist\CS2MediaControl.exe` to repo root, then deletes `build/`, `dist/`, and the `.spec` file. The root `CS2MediaControl.exe` is gitignored; the one currently committed is stale.
 - Install GSI config: run `install_config.ps1`. It reads the install path from `HKLM:\SOFTWARE\WOW6432Node\Valve\cs2` and copies the `.cfg` to `<cs2>\game\csgo\cfg`. Fails without admin or if CS2 isn't installed at the standard registry path. CS2 must be restarted after install.
 
 ## Platform constraints
