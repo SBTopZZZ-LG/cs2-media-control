@@ -45,6 +45,10 @@ Automatically pauses your music while you're alive in Counter-Strike 2 and bring
 - `poc/` holds throwaway experiments (like the SMTC multi-pause prototype). They aren't part of the app.
 - Dev setup: Python 3.11.9 (pinned in `.python-version`), `pip install -r requirements-dev.txt`, hooks run automatically on commit via `pre-commit`.
 
+## Releases
+
+Each release ships a `CS2MediaControl-v<version>.zip` as a GitHub Release download, containing the built EXE, `install_config.ps1`, and the GSI `.cfg` (everything the tool needs to run). The version lives in `version.txt` at the repo root, and CI handles everything else: pushing a bumped `version.txt` to `main` builds the EXE on Windows, bundles the ZIP, creates the `v<version>` git tag, and publishes the release with a commit log. Pushing without a version bump skips the release.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

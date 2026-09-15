@@ -9,9 +9,11 @@ Windows-only single-file Python GUI app. Listens on `127.0.0.1:3000` for Counter
 - `build_exe.ps1` — build flow.
 - `install_config.ps1` — installs the `.cfg` into CS2.
 - `requirements.txt` — only `flask` + SMTC winrt pkgs (no `pyinstaller`; the build script installs it itself).
+- `version.txt` — release source of truth (semver). Bumping it + pushing to `main` triggers the release workflow: Windows EXE build, `v<version>` git tag, GitHub Release with the EXE attached. Pushes without a bump skip.
 - `poc/` — throwaway POC scripts (each with a header docstring); not shipped in the EXE.
+- `.github/workflows/` — `ci.yml` (runs the same pre-commit hooks as `make lint`), `release.yml` (version-gated build + release).
 
-Tooling: `pre-commit` (ruff lint + ruff-format + mdformat + whitespace hygiene) via `.pre-commit-config.yaml`; ruff config in `pyproject.toml` (E501 off — formatter owns line width). Python pinned in `.python-version` (3.11.9); dev-only dep (`pre-commit`) in `requirements-dev.txt`. No tests, type-checker, CI exist. Don't invent them.
+Tooling: `pre-commit` (ruff lint + ruff-format + mdformat + whitespace hygiene) via `.pre-commit-config.yaml`; ruff config in `pyproject.toml` (E501 off — formatter owns line width). Python pinned in `.python-version` (3.11.9); dev-only dep (`pre-commit`) in `requirements-dev.txt`. No tests, type-checker exist. Don't invent them.
 
 ## Setup / run
 

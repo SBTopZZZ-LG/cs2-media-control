@@ -1,0 +1,198 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# release.yml — Build, tag, and release CS2MediaControl.exe
+#
+# Triggered on every push to main.
+#
+# Release flow (version-gated, no manual tags needed):
+#   1. Read version from version.txt
+#   2. Check if git tag v<version> already exists
+#   3. If tag doesn't exist → build EXE on Windows, create git tag + GitHub release
+#   4. If tag already exists → skip (already released)
+#
+# To release a new version:
+#   1. Edit version.txt (e.g. 1.0.0 → 1.1.0)
+#   2. git add version.txt && git commit && git push
+#   3. CI handles the rest — build EXE, create git tag, create release
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  # ── Determine if a release is needed ─────────────────────────────────────
+  check:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag_exists: ${{ steps.check_tag.outputs.tag_exists }}
+      prev_tag: ${{ steps.commits.outputs.prev_tag }}
+      prev_version: ${{ steps.commits.outputs.prev_version }}
+      commit_count: ${{ steps.commits.outputs.commit_count }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from version.txt
+        id: read
+        run: |
+          VERSION=$(cat version.txt | tr -d '[:space:]')
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::version.txt is empty"
+            exit 1
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version.txt must be a semantic version (e.g. 1.0.0), got: '$VERSION'"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Fetch all tags
+        run: git fetch --tags --force
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          TAG="${{ steps.read.outputs.tag }}"
+          if git rev-parse --verify --tags "$TAG" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG already exists — skipping release"
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "Tag $TAG does not exist — will release"
+          fi
+
+      - name: Find previous version tag
+        id: commits
+        run: |
+          PREV_TAG=""
+          PREV_VERSION=""
+          CURRENT="${{ steps.read.outputs.version }}"
+          CURRENT_PARTS=(${CURRENT//./ })
+          CURRENT_MAJOR=${CURRENT_PARTS[0]}
+          CURRENT_MINOR=${CURRENT_PARTS[1]}
+
+          ALL_TAGS=$(git tag --list 'v*.*.*' --sort=-v:refname | head -20)
+
+          for T in $ALL_TAGS; do
+            VER="${T#v}"
+            PARTS=(${VER//./ })
+            M=${PARTS[0]}
+            N=${PARTS[1]}
+            if (( M < CURRENT_MAJOR )) || \
+               (( M == CURRENT_MAJOR && N < CURRENT_MINOR )); then
+              PREV_TAG="$T"
+              PREV_VERSION="$VER"
+              break
+            fi
+          done
+
+          if [[ -n "$PREV_TAG" ]]; then
+            COUNT=$(git rev-list --count "$PREV_TAG..HEAD")
+          else
+            COUNT=$(git rev-list --count HEAD)
+          fi
+
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "prev_version=$PREV_VERSION" >> $GITHUB_OUTPUT
+          echo "commit_count=$COUNT" >> $GITHUB_OUTPUT
+
+  # ── Build EXE, tag, release ──────────────────────────────────────────────
+  release:
+    name: Build & Release
+    needs: check
+    runs-on: windows-latest
+    if: needs.check.outputs.tag_exists == 'false'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build EXE
+        # Same flags as build_exe.ps1: --collect-submodules is required,
+        # the winrt shims are PEP-420 namespaces the static graph misses.
+        run: pyinstaller --noconfirm --noconsole --onefile --name CS2MediaControl --collect-submodules winrt --add-data "assets;assets" cs2_media_control.py
+
+      - name: Bundle release ZIP
+        # Flat layout: install_config.ps1 finds the .cfg via $PSScriptRoot,
+        # so all three files sit at the ZIP root and work from any folder.
+        run: |
+          New-Item -ItemType Directory -Path release
+          Copy-Item dist/CS2MediaControl.exe release/
+          Copy-Item install_config.ps1 release/
+          Copy-Item gamestate_integration_media.cfg release/
+          Compress-Archive -Path release/* -DestinationPath "CS2MediaControl-v${{ needs.check.outputs.version }}.zip"
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          PREV_TAG="${{ needs.check.outputs.prev_tag }}"
+          PREV_VERSION="${{ needs.check.outputs.prev_version }}"
+          COUNT="${{ needs.check.outputs.commit_count }}"
+
+          if [[ -n "$PREV_TAG" ]]; then
+            PREV_DISPLAY="since ${PREV_TAG} (${PREV_VERSION})"
+            LOG=$(git log "$PREV_TAG..HEAD" --oneline)
+          else
+            PREV_DISPLAY="(first release)"
+            LOG=$(git log --oneline)
+          fi
+
+          printf "%s\n" \
+            "## What Changed" \
+            "" \
+            "**${COUNT} commit(s)** ${PREV_DISPLAY}" \
+            "" \
+            "### Commit Log" \
+            "" \
+            '```' \
+            "${LOG}" \
+            '```' \
+            "" \
+            "### Install" \
+            "" \
+            "1. Download the \`CS2MediaControl-v${VERSION}.zip\` below and extract it anywhere." \
+            "2. Run \`install_config.ps1\` (as admin) to install the GSI config, then restart CS2." \
+            "3. Run \`CS2MediaControl.exe\`." \
+            "" \
+            "> If the media key does not reach your player while CS2 has focus, run the EXE as Administrator." \
+            > release-body.txt
+
+      - name: Create Git Tag
+        run: |
+          git tag "v${{ needs.check.outputs.version }}"
+          git push origin "v${{ needs.check.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check.outputs.version }}
+          name: v${{ needs.check.outputs.version }}
+          body_path: release-body.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          files: CS2MediaControl-v${{ needs.check.outputs.version }}.zip
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
