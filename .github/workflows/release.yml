@@ -188,6 +188,14 @@ jobs:
             "3. Run \`CS2MediaControl.exe\`." \
             "" \
             "> If the media key does not reach your player while CS2 has focus, run the EXE as Administrator." \
+            "" \
+            "### Antivirus Note" \
+            "" \
+            "Unsigned PyInstaller builds trip heuristic scanners (e.g. Defender \`Wacatac.B!ml\`, assorted VirusTotal ML verdicts)." \
+            "These flag the packager's self-extracting bootloader, not this app's behavior:" \
+            "it only listens on 127.0.0.1:3000, reads local media sessions, and sends a media key." \
+            "Rather not trust a prebuilt binary? Audit \`cs2_media_control.py\` with the AI of your choice," \
+            "or build it yourself via \`build_exe.ps1\`." \
             > release-body.txt
 
       - name: Create Git Tag

@@ -49,6 +49,12 @@ Automatically pauses your music while you're alive in Counter-Strike 2 and bring
 
 Each release ships a `CS2MediaControl-v<version>.zip` as a GitHub Release download, containing the built EXE, `install_config.ps1`, and the GSI `.cfg` (everything the tool needs to run). The version lives in `version.txt` at the repo root, and CI handles everything else: pushing a bumped `version.txt` to `main` runs CI, and once that passes builds the EXE on Windows, bundles the ZIP, creates the `v<version>` git tag, and publishes the release with a commit log. Pushing without a version bump, or with failing CI, skips the release.
 
+### Antivirus false positives
+
+The release EXE is an unsigned PyInstaller onefile build. That packaging self-extracts to a temp folder and launches from there, which heuristic engines dislike: expect generic or ML-based flags such as `Trojan:Win32/Wacatac.B!ml` from Defender, or a handful of similar VirusTotal verdicts. Those fire on the packager's bootloader, not on anything this app does. All the app does is listen on `127.0.0.1:3000` for CS2 game-state posts, read local media sessions, and synthesize a media key. It contacts no servers and writes nothing outside its own temp folder.
+
+If you would rather not trust a downloaded binary, you have two good options. The whole app is one readable Python file, so paste `cs2_media_control.py` into any AI assistant and ask it to audit what it does. Or skip the download entirely and build the EXE yourself with `build_exe.ps1`. Your machine, your call.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
