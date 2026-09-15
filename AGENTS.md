@@ -9,6 +9,7 @@ Windows-only single-file Python GUI app. Listens on `127.0.0.1:3000` for Counter
 - `build_exe.ps1` — build flow.
 - `install_config.ps1` — installs the `.cfg` into CS2.
 - `requirements.txt` — only `flask` + SMTC winrt pkgs (no `pyinstaller`; the build script installs it itself).
+- `poc/` — throwaway POC scripts (each with a header docstring); not shipped in the EXE.
 
 No tests, linter, formatter, type-checker, CI, or pre-commit hooks exist. Don't invent them.
 

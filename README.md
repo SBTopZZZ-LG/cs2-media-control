@@ -1,46 +1,49 @@
 # CS2 Media Controller
 
-This simple Python GUI application automatically pauses and resumes your media (Spotify, YouTube Music, etc.) based on your in-game status in Counter-Strike 2.
+Automatically pauses your music while you're alive in Counter-Strike 2 and brings it back when you die or the round ends. It's a small Windows GUI app that listens for CS2 Game State Integration (GSI) events on `127.0.0.1:3000` and toggles playback for you.
 
-## Features
-- **Auto-Respect**: Pauses media when the round starts or you respawn.
-- **Downtime Entertainment**: Resumes media when you die or the round ends.
-- **Visual Status**: Shows connection status and game state in a window.
-- **Multi-Source (optional)**: Pause/resume each selected app (Spotify + browser) via Windows SMTC instead of the single media key.
+## Behavior
 
-## Installation
+- When you spawn into a live round, your media pauses right away.
+- When you die, end up spectating, or the round finishes, it resumes after about 2 seconds. If you respawn inside that window, the pending resume is cancelled and it pauses instead.
+- Freezetime while you're alive counts as paused. During the delay the status label reads `RESUMING IN 2s` in orange, then flips to `PLAYING` or `PAUSED`.
+- It only acts when the state actually changes, using either the media key or per-app SMTC control (see Controls).
 
-1. **Build the Application (Recommended):**
-   - Right-click `build_exe.ps1` and select "Run with PowerShell".
-   - This will create a `CS2MediaControl.exe` file in this folder.
-   - You can now run this EXE directly without opening terminals.
+## Requirements
 
-   *Alternatively, runs as script:*
-   - `pip install -r requirements.txt`
-   - `python cs2_media_control.py`
+- Windows. The app drives the `user32` media key and focus APIs, so there's no macOS/Linux support.
+- Counter-Strike 2, restarted once after you install the GSI config below.
+- Something playing audio (Spotify, a browser tab, etc.).
+- You may need to run as admin. Windows can block synthetic media keys and window focus changes while CS2 has focus.
 
-2. **Install the Game State Integration Config:**
-   **Automatic Method:**
-   - Right-click `install_config.ps1` and select "Run with PowerShell".
-   
-   **Manual Method:**
-   - Copy the file `gamestate_integration_media.cfg` from this folder.
-   - Navigate to your CS2 installation folder. usually:
-     `D:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive\game\csgo\cfg` (or C:\Program Files...)
-   - Paste the file there.
+## Quick start
 
-## Usage
+1. Build the app: right-click `build_exe.ps1` and choose Run with PowerShell. That gives you `CS2MediaControl.exe`. If you'd rather run from source: `pip install -r requirements.txt && python cs2_media_control.py`.
+2. Install the GSI config: right-click `install_config.ps1` and choose Run with PowerShell. It copies `gamestate_integration_media.cfg` into `<cs2>\game\csgo\cfg`. Restart CS2 afterwards.
+3. Start your music, launch the app (or EXE), then launch CS2.
+4. Sync up once. The app can't ask your player whether it's playing, so it assumes media starts out **playing**. If it shows PLAYING while you're actually paused, just tap Play/Pause once and you're aligned.
 
-1. Start your music player (e.g., Spotify) and have music playing (or paused, just be ready).
-2. Run the application:
-   ```bash
-   python cs2_media_control.py
-   ```
-3. Launch CS2.
-4. The application status should update as you play.
+## Controls
+
+- **Enable Auto-Resume/Pause.** The master switch. Turning it off greys out the boxes below and cancels any pending resume. GSI events still arrive in the background, but the GUI stops reacting to them.
+- **Media Sources: Control multiple media sources.** Pauses and resumes each checked app individually through Windows SMTC (`TryPause`/`TryPlayAsync`) instead of the single media-key toggle. Sources are opt-in by AUMID and new ones start unchecked. Pausing snapshots whatever is PLAYING among your checked sources, and the delayed resume replays that set. With nothing checked, or without the `winrt` packages installed, it falls back to the media key and says so in the log.
+- **Auto-Focus: Auto-focus between CS2 and the selected media window.** Jumps focus back to CS2 when you go alive and over to your media window when you die. Pick the window from the dropdown. It tracks the app by exe path, so it survives tab switches, title changes, and restarts, and flags the pick as `stale` if you close the app. This one can also need admin rights (`SetForegroundWindow` gets blocked otherwise, which is logged rather than raised).
 
 ## Troubleshooting
 
-- **Admin Privileges**: If the media keys don't trigger while you are in-game, try running the python script as Administrator.
-- **Status Sync**: If the app thinks music is playing but it's paused (inverted), just manually press your Play/Pause key once to sync them up.
-- **Firewall**: Ensure Windows Firewall allows the Python connection on port 3000 (Localhost only, so usually fine).
+- **Pause/play feels inverted**: tap Play/Pause once to resync. The app assumes "playing" at startup.
+- **Keys or focus do nothing in-game**: try running as Administrator.
+- **No game data coming in**: confirm the `.cfg` sits in `<cs2>\game\csgo\cfg`, that you restarted CS2 after installing it, and that the app log shows `Server started on 127.0.0.1:3000`.
+- **Multi-source won't engage**: run `pip install -r requirements.txt` for the `winrt` packages, and make sure your sources are actually checked.
+- **Media window shows stale**: just re-pick it in the dropdown after closing or restarting that app.
+
+## Dev notes
+
+- Everything lives in `cs2_media_control.py`: a tkinter GUI with the Flask server on a daemon thread.
+- Keep `gamestate_integration_media.cfg` (`uri http://127.0.0.1:3000/`) in sync with `HOST`/`PORT` in the script.
+- Rebuild the EXE with `build_exe.ps1` from the repo root. Don't hand-edit the built binary.
+- `poc/` holds throwaway experiments (like the SMTC multi-pause prototype). They aren't part of the app.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

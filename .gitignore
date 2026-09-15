@@ -2,9 +2,16 @@
 __pycache__/
 *.pyc
 venv/
+.venv/
 
 # VS Code
 .vscode/
+
+# Kilo
+.kilo/
+
+# Local notes / experiments
+deep-dive/
 
 # Build artifacts (PyInstaller)
 build/
