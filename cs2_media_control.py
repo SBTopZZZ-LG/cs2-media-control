@@ -1,27 +1,29 @@
-import tkinter as tk
-from tkinter import ttk, scrolledtext
 import asyncio
-import threading
-from flask import Flask, request
-import logging
 import ctypes
+import logging
 import struct
+import threading
 import time
+import tkinter as tk
 from ctypes import wintypes
+from tkinter import scrolledtext, ttk
+
+from flask import Flask, request
 
 # Configuration
 PORT = 3000
-HOST = '127.0.0.1'
+HOST = "127.0.0.1"
 # Delay (ms) between detecting a "resume media" state (player dead / round over) and actually
 # pressing the play key + switching focus. Gives the player a moment after dying before media
 # kicks back in. The pause path (respawn) is instant.
 RESUME_DELAY_MS = 2000
 
+
 def press_media_key():
     # VK_MEDIA_PLAY_PAUSE = 0xB3
     try:
-        ctypes.windll.user32.keybd_event(0xB3, 0, 0, 0) # Key Down
-        ctypes.windll.user32.keybd_event(0xB3, 0, 2, 0) # Key Up
+        ctypes.windll.user32.keybd_event(0xB3, 0, 0, 0)  # Key Down
+        ctypes.windll.user32.keybd_event(0xB3, 0, 2, 0)  # Key Up
     except Exception as e:
         print(f"Failed to press media key: {e}")
 
@@ -40,8 +42,11 @@ _SMTC_IMPORT_ERROR = None
 try:
     from winrt.windows.media.control import (
         GlobalSystemMediaTransportControlsSessionManager as _SessionManager,
+    )
+    from winrt.windows.media.control import (
         GlobalSystemMediaTransportControlsSessionPlaybackStatus as _PlaybackStatus,
     )
+
     _SMTC_AVAILABLE = True
 except Exception as _e:
     _SMTC_IMPORT_ERROR = _e
@@ -49,8 +54,10 @@ except Exception as _e:
 
 def _run_winrt(coro):
     """Run a WinRT awaitable to completion on the calling thread (brief; GUI-safe)."""
+
     async def _wrapper():
         return await coro
+
     return asyncio.run(_wrapper())
 
 
@@ -245,9 +252,22 @@ def hicon_to_photoimage(hicon, size=16):
         mem_dc = gdi32.CreateCompatibleDC(hdc)
 
         bmi = ctypes.create_string_buffer(40)
-        struct.pack_into('IiiHHIIiiII', bmi, 0,
-                         40, size, -size, 1, 32, 0,
-                         size * size * 4, 0, 0, 0, 0)
+        struct.pack_into(
+            "IiiHHIIiiII",
+            bmi,
+            0,
+            40,
+            size,
+            -size,
+            1,
+            32,
+            0,
+            size * size * 4,
+            0,
+            0,
+            0,
+            0,
+        )
         dst_bmp = gdi32.CreateDIBSection(mem_dc, bmi, 0, ctypes.byref(bits_ptr), 0, 0)
         if not dst_bmp or not bits_ptr.value:
             return None
@@ -277,17 +297,25 @@ def hicon_to_photoimage(hicon, size=16):
         return None
     finally:
         if old_bmp and mem_dc:
-            try: gdi32.SelectObject(mem_dc, old_bmp)
-            except Exception: pass
+            try:
+                gdi32.SelectObject(mem_dc, old_bmp)
+            except Exception:
+                pass
         if dst_bmp:
-            try: gdi32.DeleteObject(dst_bmp)
-            except Exception: pass
+            try:
+                gdi32.DeleteObject(dst_bmp)
+            except Exception:
+                pass
         if mem_dc:
-            try: gdi32.DeleteDC(mem_dc)
-            except Exception: pass
+            try:
+                gdi32.DeleteDC(mem_dc)
+            except Exception:
+                pass
         if hdc:
-            try: user32.ReleaseDC(0, hdc)
-            except Exception: pass
+            try:
+                user32.ReleaseDC(0, hdc)
+            except Exception:
+                pass
 
 
 def find_cs2_window():
@@ -335,7 +363,9 @@ class WindowPicker(tk.Frame):
     picker enters a 'stale' state and the button shows a warning.
     """
 
-    def __init__(self, parent, on_select=None, on_stale=None, button_width=38, **kwargs):
+    def __init__(
+        self, parent, on_select=None, on_stale=None, button_width=38, **kwargs
+    ):
         super().__init__(parent, **kwargs)
         self.on_select = on_select
         self.on_stale = on_stale
@@ -346,10 +376,17 @@ class WindowPicker(tk.Frame):
         self.dropdown = None
         self._click_bind_id = None
 
-        self.button = ttk.Button(self, text="(Select window...)", width=button_width,
-                                 command=self.toggle_dropdown, compound="left")
+        self.button = ttk.Button(
+            self,
+            text="(Select window...)",
+            width=button_width,
+            command=self.toggle_dropdown,
+            compound="left",
+        )
         self.button.pack(side="left", padx=(0, 5))
-        self.refresh_btn = ttk.Button(self, text="Refresh", width=8, command=self.refresh)
+        self.refresh_btn = ttk.Button(
+            self, text="Refresh", width=8, command=self.refresh
+        )
         self.refresh_btn.pack(side="left")
 
     def set_enabled(self, enabled):
@@ -370,7 +407,9 @@ class WindowPicker(tk.Frame):
         if self.selected_exe:
             target = self.selected_exe.lower()
             # Prefer the same hwnd if it still exists (preserves identity through title changes)
-            if self.selected_hwnd and any(h == self.selected_hwnd for h, _, _, _ in self.windows):
+            if self.selected_hwnd and any(
+                h == self.selected_hwnd for h, _, _, _ in self.windows
+            ):
                 self.is_stale = False
             else:
                 # Fall back to any window of the same exe (z-order: first enumerated = topmost)
@@ -396,9 +435,14 @@ class WindowPicker(tk.Frame):
 
     def _update_button_text(self):
         if self.is_stale:
-            exe_name = self.selected_exe.rsplit("\\", 1)[-1] if self.selected_exe else "window"
-            self.button.config(text=f"(stale: {exe_name} closed - pick again)",
-                               image="", compound="none")
+            exe_name = (
+                self.selected_exe.rsplit("\\", 1)[-1] if self.selected_exe else "window"
+            )
+            self.button.config(
+                text=f"(stale: {exe_name} closed - pick again)",
+                image="",
+                compound="none",
+            )
             return
         for hwnd, title, _exe, icon in self.windows:
             if hwnd == self.selected_hwnd:
@@ -444,9 +488,13 @@ class WindowPicker(tk.Frame):
         canvas = tk.Canvas(outer, width=420, height=320, highlightthickness=0)
         scrollbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
         inner = ttk.Frame(canvas)
-        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        inner.bind(
+            "<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
         win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
-        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(win_id, width=e.width))
+        canvas.bind(
+            "<Configure>", lambda e: canvas.itemconfigure(win_id, width=e.width)
+        )
         canvas.configure(yscrollcommand=scrollbar.set)
 
         if not self.windows:
@@ -499,6 +547,7 @@ class WindowPicker(tk.Frame):
                 pass
             self._click_bind_id = None
 
+
 class MediaSourcePicker(tk.Frame):
     """Button + pop-up checklist for SMTC media sessions (multi-source control).
 
@@ -508,8 +557,14 @@ class MediaSourcePicker(tk.Frame):
     uncheck them; at action time they are skipped with a log line.
     """
 
-    STATUS_NAMES = {0: "Closed", 1: "Opened", 2: "Changing", 3: "Stopped",
-                    4: "Playing", 5: "Paused"}
+    STATUS_NAMES = {
+        0: "Closed",
+        1: "Opened",
+        2: "Changing",
+        3: "Stopped",
+        4: "Playing",
+        5: "Paused",
+    }
 
     def __init__(self, parent, button_width=38, **kwargs):
         super().__init__(parent, **kwargs)
@@ -519,10 +574,16 @@ class MediaSourcePicker(tk.Frame):
         self._click_bind_id = None
         self._row_vars = {}
 
-        self.button = ttk.Button(self, text="(Select sources...)", width=button_width,
-                                 command=self.toggle_dropdown)
+        self.button = ttk.Button(
+            self,
+            text="(Select sources...)",
+            width=button_width,
+            command=self.toggle_dropdown,
+        )
         self.button.pack(side="left", padx=(0, 5))
-        self.refresh_btn = ttk.Button(self, text="Refresh", width=8, command=self.refresh)
+        self.refresh_btn = ttk.Button(
+            self, text="Refresh", width=8, command=self.refresh
+        )
         self.refresh_btn.pack(side="left")
 
     def set_enabled(self, enabled):
@@ -612,15 +673,23 @@ class MediaSourcePicker(tk.Frame):
 
         footer = ttk.Frame(outer)
         footer.pack(side="bottom", fill="x", padx=5, pady=4)
-        ttk.Button(footer, text="All", width=6, command=self._select_all).pack(side="left", padx=2)
-        ttk.Button(footer, text="None", width=6, command=self._select_none).pack(side="left", padx=2)
+        ttk.Button(footer, text="All", width=6, command=self._select_all).pack(
+            side="left", padx=2
+        )
+        ttk.Button(footer, text="None", width=6, command=self._select_none).pack(
+            side="left", padx=2
+        )
 
         canvas = tk.Canvas(outer, width=420, height=240, highlightthickness=0)
         scrollbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
         inner = ttk.Frame(canvas)
-        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        inner.bind(
+            "<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
         win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
-        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(win_id, width=e.width))
+        canvas.bind(
+            "<Configure>", lambda e: canvas.itemconfigure(win_id, width=e.width)
+        )
         canvas.configure(yscrollcommand=scrollbar.set)
 
         self._row_vars = {}
@@ -629,7 +698,9 @@ class MediaSourcePicker(tk.Frame):
         for aumid in sorted(self.get_checked() - live):
             rows.append((aumid, "", -1, False))
         if not rows:
-            ttk.Label(inner, text="(no media sources - start Spotify/YouTube)").pack(padx=10, pady=10)
+            ttk.Label(inner, text="(no media sources - start Spotify/YouTube)").pack(
+                padx=10, pady=10
+            )
         else:
             for aumid, title, status, is_live in rows:
                 var = tk.BooleanVar(value=self.checked.get(aumid, False))
@@ -638,9 +709,12 @@ class MediaSourcePicker(tk.Frame):
                     text = self._row_label(aumid, title, status)
                 else:
                     text = f"{aumid} (not running)"
-                ttk.Checkbutton(inner, text=text, variable=var,
-                                command=lambda a=aumid, v=var: self._on_row_toggle(a, v)
-                                ).pack(anchor="w", fill="x", padx=8, pady=2)
+                ttk.Checkbutton(
+                    inner,
+                    text=text,
+                    variable=var,
+                    command=lambda a=aumid, v=var: self._on_row_toggle(a, v),
+                ).pack(anchor="w", fill="x", padx=8, pady=2)
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
@@ -674,14 +748,17 @@ class MediaSourcePicker(tk.Frame):
                 pass
             self._click_bind_id = None
 
+
 class CS2MediaApp:
     def __init__(self, root):
         self.root = root
         self.root.title("CS2 Media Controller")
         self.root.geometry("600x520")
-        
+
         # Application State
-        self.media_is_playing = True # assume media is playing initially or let user toggle
+        self.media_is_playing = (
+            True  # assume media is playing initially or let user toggle
+        )
         self.is_running = True
         self.is_enabled = tk.BooleanVar(value=True)
         self.current_score = -1
@@ -701,7 +778,12 @@ class CS2MediaApp:
         # Controls
         control_frame = ttk.LabelFrame(root, text="Controls")
         control_frame.pack(fill="x", padx=10, pady=5)
-        ttk.Checkbutton(control_frame, text="Enable Auto-Resume/Pause", variable=self.is_enabled, command=self.on_enable_toggle).pack(anchor="w", padx=5, pady=5)
+        ttk.Checkbutton(
+            control_frame,
+            text="Enable Auto-Resume/Pause",
+            variable=self.is_enabled,
+            command=self.on_enable_toggle,
+        ).pack(anchor="w", padx=5, pady=5)
 
         # Multi-source controls (nested inside Controls, above Auto-Focus)
         sources_frame = ttk.LabelFrame(control_frame, text="Media Sources")
@@ -734,33 +816,50 @@ class CS2MediaApp:
         picker_row = ttk.Frame(focus_frame)
         picker_row.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Label(picker_row, text="Media window:").pack(side="left", padx=(0, 5))
-        self.window_picker = WindowPicker(picker_row, on_select=self.on_window_selected,
-                                          on_stale=self.on_window_stale, button_width=42)
+        self.window_picker = WindowPicker(
+            picker_row,
+            on_select=self.on_window_selected,
+            on_stale=self.on_window_stale,
+            button_width=42,
+        )
         self.window_picker.pack(side="left", fill="x", expand=True)
         self.window_picker.refresh()
         self.window_picker.set_enabled(False)
-        
+
         # User Instructions
         instruction_frame = ttk.LabelFrame(root, text="Instructions")
         instruction_frame.pack(fill="x", padx=10, pady=5)
-        ttk.Label(instruction_frame, text="1. Copy the .cfg file to your CS2 cfg folder.").pack(anchor="w")
-        ttk.Label(instruction_frame, text="2. Start your music player.").pack(anchor="w")
-        ttk.Label(instruction_frame, text="3. Ensure music matches the 'Current Expected State'.").pack(anchor="w")
+        ttk.Label(
+            instruction_frame, text="1. Copy the .cfg file to your CS2 cfg folder."
+        ).pack(anchor="w")
+        ttk.Label(instruction_frame, text="2. Start your music player.").pack(
+            anchor="w"
+        )
+        ttk.Label(
+            instruction_frame,
+            text="3. Ensure music matches the 'Current Expected State'.",
+        ).pack(anchor="w")
 
         # Status Display
         status_frame = ttk.LabelFrame(root, text="Status")
         status_frame.pack(fill="x", padx=10, pady=5)
-        
-        self.game_state_label = ttk.Label(status_frame, text="Game State: Waiting for data...", foreground="gray")
+
+        self.game_state_label = ttk.Label(
+            status_frame, text="Game State: Waiting for data...", foreground="gray"
+        )
         self.game_state_label.pack(anchor="w", padx=5)
-        
-        self.media_state_label = ttk.Label(status_frame, text="Media Control: IDLE", foreground="blue")
+
+        self.media_state_label = ttk.Label(
+            status_frame, text="Media Control: IDLE", foreground="blue"
+        )
         self.media_state_label.pack(anchor="w", padx=5)
 
         # Log
         log_frame = ttk.LabelFrame(root, text="Event Log (Newest Top)")
         log_frame.pack(fill="both", expand=True, padx=10, pady=5)
-        self.log_area = scrolledtext.ScrolledText(log_frame, height=10, state='disabled')
+        self.log_area = scrolledtext.ScrolledText(
+            log_frame, height=10, state="disabled"
+        )
         self.log_area.pack(fill="both", expand=True)
 
         # Start Server
@@ -776,12 +875,14 @@ class CS2MediaApp:
         self.source_picker.set_enabled(enabled and self.multi_enabled.get())
         self.window_picker.set_enabled(enabled and self.auto_focus_enabled.get())
         if not enabled:
-             self.media_state_label.config(text="Media Control: DISABLED", foreground="gray")
-             # Cancel any pending delayed resume so it doesn't fire while disabled
-             if self._pending_resume_job:
-                 self.root.after_cancel(self._pending_resume_job)
-                 self._pending_resume_job = None
-             self._paused_snapshot = []
+            self.media_state_label.config(
+                text="Media Control: DISABLED", foreground="gray"
+            )
+            # Cancel any pending delayed resume so it doesn't fire while disabled
+            if self._pending_resume_job:
+                self.root.after_cancel(self._pending_resume_job)
+                self._pending_resume_job = None
+            self._paused_snapshot = []
 
     def on_auto_focus_toggle(self):
         enabled = self.auto_focus_enabled.get()
@@ -815,14 +916,18 @@ class CS2MediaApp:
             self._schedule_refresh()
         if enabled:
             if not _SMTC_AVAILABLE:
-                self.log("Multi-source enabled, but SMTC unavailable (winrt pkgs missing). Install requirements to use it.")
+                self.log(
+                    "Multi-source enabled, but SMTC unavailable (winrt pkgs missing). Install requirements to use it."
+                )
             else:
                 err = self.source_picker.refresh()
                 if err:
                     self.log(f"Multi-source enabled, but listing sources failed: {err}")
                 else:
                     n = len(self.source_picker.get_checked())
-                    self.log(f"Multi-source enabled (SMTC). {n} source(s) checked - only checked sources are paused/resumed.")
+                    self.log(
+                        f"Multi-source enabled (SMTC). {n} source(s) checked - only checked sources are paused/resumed."
+                    )
                     # Prime the snapshot if media is believed playing: covers enabling
                     # mid-round (e.g. while dead) where no pause transition will precede
                     # the next resume.
@@ -830,14 +935,25 @@ class CS2MediaApp:
                         live = smtc_list_sources()
                         playing_val = int(_PlaybackStatus.PLAYING)
                         wanted = self.source_picker.get_checked()
-                        prime = sorted({a for a, st, _t in live if st == playing_val and a in wanted})
+                        prime = sorted(
+                            {
+                                a
+                                for a, st, _t in live
+                                if st == playing_val and a in wanted
+                            }
+                        )
                         if prime:
                             self._paused_snapshot = prime
                             self.log(f"Multi-source snapshot primed: {prime}")
                         live_checked = [st for a, st, _t in live if a in wanted]
                         if live_checked:
-                            self.media_is_playing = any(st == playing_val for st in live_checked)
-                            self.log("Assumed media state synced on enable: " + ('PLAYING' if self.media_is_playing else 'PAUSED'))
+                            self.media_is_playing = any(
+                                st == playing_val for st in live_checked
+                            )
+                            self.log(
+                                "Assumed media state synced on enable: "
+                                + ("PLAYING" if self.media_is_playing else "PAUSED")
+                            )
                     except Exception as e:
                         self.log(f"Multi-source snapshot prime failed: {e}")
         else:
@@ -861,12 +977,16 @@ class CS2MediaApp:
         except Exception:
             playing_val = 4
         wanted = self.source_picker.get_checked()
-        targets = sorted({a for a, st, _t in sources if st == playing_val and a in wanted})
+        targets = sorted(
+            {a for a, st, _t in sources if st == playing_val and a in wanted}
+        )
         if not targets:
             # Keep any earlier snapshot: nothing is playing right now (e.g. a legacy
             # keypress or the user paused manually), so there is nothing new to record.
             # Wiping here would strand a pending resume set and skip the next resume.
-            self.log("Multi-source pause: nothing PLAYING among checked sources (keeping prior snapshot).")
+            self.log(
+                "Multi-source pause: nothing PLAYING among checked sources (keeping prior snapshot)."
+            )
             return
         self._paused_snapshot = targets
         try:
@@ -880,9 +1000,14 @@ class CS2MediaApp:
         self.log(f"Multi-source paused: {targets}")
 
     def on_window_stale(self):
-        exe_name = self.window_picker.selected_exe.rsplit("\\", 1)[-1] \
-            if self.window_picker.selected_exe else "selected window"
-        self.log(f"Auto-focus WARNING: {exe_name} is no longer running. Pick a new window.")
+        exe_name = (
+            self.window_picker.selected_exe.rsplit("\\", 1)[-1]
+            if self.window_picker.selected_exe
+            else "selected window"
+        )
+        self.log(
+            f"Auto-focus WARNING: {exe_name} is no longer running. Pick a new window."
+        )
 
     def _schedule_refresh(self):
         if not (self.auto_focus_enabled.get() or self.multi_enabled.get()):
@@ -932,57 +1057,62 @@ class CS2MediaApp:
             self.log(f"Auto-focus: switched to '{target_name}'")
             self.last_focus_hwnd = target_hwnd
         else:
-            self.log(f"Auto-focus: SetForegroundWindow blocked for '{target_name}' (try running as Administrator).")
+            self.log(
+                f"Auto-focus: SetForegroundWindow blocked for '{target_name}' (try running as Administrator)."
+            )
 
     def log(self, message):
-        self.log_area.config(state='normal')
-        self.log_area.insert('1.0', f"{time.strftime('%H:%M:%S')} - {message}\n")
-        self.log_area.config(state='disabled')
+        self.log_area.config(state="normal")
+        self.log_area.insert("1.0", f"{time.strftime('%H:%M:%S')} - {message}\n")
+        self.log_area.config(state="disabled")
 
     def start_server(self):
         self.server = Flask(__name__)
-        log = logging.getLogger('werkzeug')
-        log.setLevel(logging.ERROR) # Silence Flask output
+        log = logging.getLogger("werkzeug")
+        log.setLevel(logging.ERROR)  # Silence Flask output
 
-        @self.server.route('/', methods=['POST'])
+        @self.server.route("/", methods=["POST"])
         def handle_post():
             if not self.is_running:
-                return '', 500
+                return "", 500
             try:
                 data = request.json
                 self.process_payload(data)
             except Exception as e:
                 print(f"Error processing payload: {e}")
-            return '', 200
+            return "", 200
 
-        self.server_thread = threading.Thread(target=lambda: self.server.run(host=HOST, port=PORT, threaded=True), daemon=True)
+        self.server_thread = threading.Thread(
+            target=lambda: self.server.run(host=HOST, port=PORT, threaded=True),
+            daemon=True,
+        )
         self.server_thread.start()
         self.log(f"Server started on {HOST}:{PORT}")
 
     def process_payload(self, data):
         # Extract relevant data
-        player = data.get('player', {})
-        provider = data.get('provider', {})
-        match_stats = data.get('map', {}) # map info usually contains phase
-        round_info = data.get('round', {})
-        
+        player = data.get("player", {})
+        provider = data.get("provider", {})
+        match_stats = data.get("map", {})  # map info usually contains phase
+        round_info = data.get("round", {})
+
         # Steam IDs to detect spectating
         # provider.steamid is the local account
         # player.steamid is the player being watched
-        provider_steamid = provider.get('steamid')
-        player_steamid = player.get('steamid')
+        provider_steamid = provider.get("steamid")
+        player_steamid = player.get("steamid")
 
         # Scores
         try:
-            ct_score = int(match_stats.get('team_ct', {}).get('score', 0))
-            t_score = int(match_stats.get('team_t', {}).get('score', 0))
+            ct_score = int(match_stats.get("team_ct", {}).get("score", 0))
+            t_score = int(match_stats.get("team_t", {}).get("score", 0))
             total_score = ct_score + t_score
-        except:
-             total_score = 0
+        except Exception:
+            total_score = 0
 
         # Default safe values
-        health = player.get('state', {}).get('health', 100)
-        round_phase = round_info.get('phase', '') # 'live', 'freezetime', 'over'
+        health = player.get("state", {}).get("health", 100)
+        round_phase = round_info.get("phase", "")  # 'live', 'freezetime', 'over'
 
         # Debug info for log
         debug_vals = f"[H:{health}, Ph:{round_phase}, Score:{total_score}]"
@@ -995,65 +1125,78 @@ class CS2MediaApp:
         if total_score > self.current_score:
             self.current_score = total_score
             self.has_died_this_round = False
-            self.log(f"New Round detected (Score: {total_score}). Resetting death state.")
+            self.log(
+                f"New Round detected (Score: {total_score}). Resetting death state."
+            )
 
         # Determine Playing State
-        
+
         # 1. Round Over / Freezetime -> Resume
-        if round_phase == 'over' or round_phase == 'freezetime':
-             # Note: Freezetime usually happens at start of round, but score update happens then too.
-             # We want to pause when we spawn (live/freezetime) unless we are dead?
-             # User said: "pause when another round starts or I respawn"
-             # So actually Freezetime should probably be PAUSED if we are alive (spawned).
-             if round_phase == 'over':
-                 should_play = True
-                 reason = "Round Over"
-             else:
-                 # Freezetime - usually players are spawned and alive.
-                 should_play = False
-                 reason = "Freezetime (Alive)"
-                 self.has_died_this_round = False
+        if round_phase == "over" or round_phase == "freezetime":
+            # Note: Freezetime usually happens at start of round, but score update happens then too.
+            # We want to pause when we spawn (live/freezetime) unless we are dead?
+            # User said: "pause when another round starts or I respawn"
+            # So actually Freezetime should probably be PAUSED if we are alive (spawned).
+            if round_phase == "over":
+                should_play = True
+                reason = "Round Over"
+            else:
+                # Freezetime - usually players are spawned and alive.
+                should_play = False
+                reason = "Freezetime (Alive)"
+                self.has_died_this_round = False
 
         # 2. Live Round
-        else: # round_phase == 'live'
-             # Check for Death Triggers
-             # 1. Health is 0
-             # 2. We are spectating (Implies we are dead in Comp)
-             is_dead_or_spectating = (health == 0) or (provider_steamid and player_steamid and provider_steamid != player_steamid)
+        else:  # round_phase == 'live'
+            # Check for Death Triggers
+            # 1. Health is 0
+            # 2. We are spectating (Implies we are dead in Comp)
+            is_dead_or_spectating = (health == 0) or (
+                provider_steamid
+                and player_steamid
+                and provider_steamid != player_steamid
+            )
 
-             if is_dead_or_spectating:
-                 if not self.has_died_this_round:
-                     self.has_died_this_round = True
-                     should_play = True
-                     reason = "Just Died/Spectating"
-                 else:
-                     should_play = True
-                     reason = "Already Dead/Spectating"
-             else:
-                 # Alive and playing as ourselves
-                 if self.has_died_this_round:
-                      # Sticky death state: We died this round, so we stay "playing music"
-                      # even if we are spectating someone who is alive (health > 0)
-                      should_play = True
-                      reason = "Spectating (Sticky State)"
-                 else:
-                      should_play = False
-                      reason = "Alive"
-        
+            if is_dead_or_spectating:
+                if not self.has_died_this_round:
+                    self.has_died_this_round = True
+                    should_play = True
+                    reason = "Just Died/Spectating"
+                else:
+                    should_play = True
+                    reason = "Already Dead/Spectating"
+            else:
+                # Alive and playing as ourselves
+                if self.has_died_this_round:
+                    # Sticky death state: We died this round, so we stay "playing music"
+                    # even if we are spectating someone who is alive (health > 0)
+                    should_play = True
+                    reason = "Spectating (Sticky State)"
+                else:
+                    should_play = False
+                    reason = "Alive"
+
         # Override for 'over' phase to ensure we always play at end of round
-        if round_phase == 'over':
-             should_play = True
-             reason = "Round Over"
+        if round_phase == "over":
+            should_play = True
+            reason = "Round Over"
 
-        self.update_gui(f"H:{health} | Ph:{round_phase} | Score:{total_score} | Died:{self.has_died_this_round}", should_play, reason, debug_vals)
+        self.update_gui(
+            f"H:{health} | Ph:{round_phase} | Score:{total_score} | Died:{self.has_died_this_round}",
+            should_play,
+            reason,
+            debug_vals,
+        )
 
     def update_gui(self, game_text, should_play, reason, debug_vals):
-        self.root.after(0, lambda: self._safe_update_gui(game_text, should_play, reason, debug_vals))
+        self.root.after(
+            0, lambda: self._safe_update_gui(game_text, should_play, reason, debug_vals)
+        )
 
     def _safe_update_gui(self, game_text, should_play, reason, debug_vals):
         if not self.is_enabled.get():
-             self.game_state_label.config(text=f"Game State: {game_text} (Ignored)")
-             return
+            self.game_state_label.config(text=f"Game State: {game_text} (Ignored)")
+            return
 
         self.game_state_label.config(text=f"Game State: {game_text}")
 
@@ -1071,22 +1214,34 @@ class CS2MediaApp:
             # state. The actual key press + focus switch may be delayed (see below).
             self.media_is_playing = should_play
 
-            checked_now = self.source_picker.get_checked() if self.multi_enabled.get() else set()
+            checked_now = (
+                self.source_picker.get_checked() if self.multi_enabled.get() else set()
+            )
             use_smtc = bool(checked_now) and _SMTC_AVAILABLE
             if self.multi_enabled.get() and not _SMTC_AVAILABLE:
-                self.log("Multi-source unavailable (winrt pkgs missing) - using media key instead.")
+                self.log(
+                    "Multi-source unavailable (winrt pkgs missing) - using media key instead."
+                )
             elif self.multi_enabled.get() and not checked_now:
-                self.log("Multi-source on but no sources checked - using media key instead.")
+                self.log(
+                    "Multi-source on but no sources checked - using media key instead."
+                )
 
             if should_play:
                 # Resume path: delay the action by RESUME_DELAY_MS (key press OR per-source
                 # resume) AND the focus switch. The SMTC snapshot was taken on the pause path.
                 self.media_state_label.config(
                     text=f"Media Control: RESUMING IN {RESUME_DELAY_MS // 1000}s",
-                    foreground="orange")
+                    foreground="orange",
+                )
                 self._pending_resume_job = self.root.after(
-                    RESUME_DELAY_MS, self._do_delayed_resume,
-                    use_smtc, list(self._paused_snapshot), reason, debug_vals)
+                    RESUME_DELAY_MS,
+                    self._do_delayed_resume,
+                    use_smtc,
+                    list(self._paused_snapshot),
+                    reason,
+                    debug_vals,
+                )
             else:
                 # Pause path: instant. The player respawned and wants to be in the game.
                 if use_smtc:
@@ -1095,7 +1250,8 @@ class CS2MediaApp:
                     self._paused_snapshot = []
                     press_media_key()
                 self.media_state_label.config(
-                    text="Media Control: PAUSED", foreground="red")
+                    text="Media Control: PAUSED", foreground="red"
+                )
                 self._apply_focus(should_play)
 
     def _do_delayed_resume(self, use_smtc, snapshot, reason, debug_vals):
@@ -1115,7 +1271,9 @@ class CS2MediaApp:
                 for aumid, ok in res.items():
                     if ok is not True:
                         self.log(f"Multi-source resume issue on '{aumid}': {ok}")
-                self.log(f"Media resumed after {RESUME_DELAY_MS // 1000}s delay (multi-source): {snapshot}. Reason: {reason} {debug_vals}")
+                self.log(
+                    f"Media resumed after {RESUME_DELAY_MS // 1000}s delay (multi-source): {snapshot}. Reason: {reason} {debug_vals}"
+                )
             elif self.source_picker is not None:
                 # Snapshot empty (never saw a pause, or state desynced): fall back to
                 # resuming checked sources that are currently paused. Self-heals the
@@ -1123,7 +1281,9 @@ class CS2MediaApp:
                 try:
                     live = smtc_list_sources()
                 except Exception as e:
-                    self.log(f"Media resume skipped (multi-source snapshot empty, list failed: {e}). Reason: {reason} {debug_vals}")
+                    self.log(
+                        f"Media resume skipped (multi-source snapshot empty, list failed: {e}). Reason: {reason} {debug_vals}"
+                    )
                     live = None
                 if live is not None:
                     try:
@@ -1131,9 +1291,13 @@ class CS2MediaApp:
                     except Exception:
                         paused_val = 5
                     wanted = self.source_picker.get_checked()
-                    fb = sorted({a for a, st, _t in live if st == paused_val and a in wanted})
+                    fb = sorted(
+                        {a for a, st, _t in live if st == paused_val and a in wanted}
+                    )
                     if fb:
-                        self.log(f"Multi-source resume fallback (snapshot empty, resuming paused+checked): {fb}")
+                        self.log(
+                            f"Multi-source resume fallback (snapshot empty, resuming paused+checked): {fb}"
+                        )
                         try:
                             res = smtc_resume_sources(fb)
                         except Exception as e:
@@ -1141,16 +1305,25 @@ class CS2MediaApp:
                             res = {}
                         for aumid, ok in res.items():
                             if ok is not True:
-                                self.log(f"Multi-source resume issue on '{aumid}': {ok}")
+                                self.log(
+                                    f"Multi-source resume issue on '{aumid}': {ok}"
+                                )
                     else:
-                        self.log(f"Media resume skipped (multi-source snapshot empty, nothing paused+checked). Reason: {reason} {debug_vals}")
+                        self.log(
+                            f"Media resume skipped (multi-source snapshot empty, nothing paused+checked). Reason: {reason} {debug_vals}"
+                        )
             self._apply_focus(True)  # delayed focus switch to the media window
-            self.media_state_label.config(text="Media Control: PLAYING", foreground="green")
+            self.media_state_label.config(
+                text="Media Control: PLAYING", foreground="green"
+            )
             return
         press_media_key()
         self._apply_focus(True)  # delayed focus switch to the media window
         self.media_state_label.config(text="Media Control: PLAYING", foreground="green")
-        self.log(f"Media resumed after {RESUME_DELAY_MS // 1000}s delay. Reason: {reason} {debug_vals}")
+        self.log(
+            f"Media resumed after {RESUME_DELAY_MS // 1000}s delay. Reason: {reason} {debug_vals}"
+        )
+
 
 if __name__ == "__main__":
     root = tk.Tk()

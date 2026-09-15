@@ -11,7 +11,7 @@ Windows-only single-file Python GUI app. Listens on `127.0.0.1:3000` for Counter
 - `requirements.txt` — only `flask` + SMTC winrt pkgs (no `pyinstaller`; the build script installs it itself).
 - `poc/` — throwaway POC scripts (each with a header docstring); not shipped in the EXE.
 
-No tests, linter, formatter, type-checker, CI, or pre-commit hooks exist. Don't invent them.
+Tooling: `pre-commit` (ruff lint + ruff-format + mdformat + whitespace hygiene) via `.pre-commit-config.yaml`; ruff config in `pyproject.toml` (E501 off — formatter owns line width). Python pinned in `.python-version` (3.11.9); dev-only dep (`pre-commit`) in `requirements-dev.txt`. No tests, type-checker, CI exist. Don't invent them.
 
 ## Setup / run
 
@@ -49,6 +49,7 @@ No tests, linter, formatter, type-checker, CI, or pre-commit hooks exist. Don't 
 ## Auto-focus feature (added)
 
 GUI exposes a second checkbox ("Auto-focus between CS2 and the selected media window") and a custom `WindowPicker` dropdown. When enabled, on every media-state transition the app also calls `SetForegroundWindow`:
+
 - `should_play == True` (dead / round over) → focus the selected media window.
 - `should_play == False` (alive) → focus CS2 (matched by window title containing `"Counter-Strike"`).
 

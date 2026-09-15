@@ -32,7 +32,7 @@ Write-Host "Cleaning up..." -ForegroundColor Cyan
 if (Test-Path "dist\CS2MediaControl.exe") {
     Copy-Item "dist\CS2MediaControl.exe" "." -Force
     Write-Host "Build complete! CS2MediaControl.exe is ready in this folder." -ForegroundColor Green
-    
+
     # Optional: Clean up build folders
     Remove-Item "build" -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item "dist" -Recurse -Force -ErrorAction SilentlyContinue

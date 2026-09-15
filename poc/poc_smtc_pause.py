@@ -8,22 +8,34 @@ snapshot via TryPlayAsync — no media-key toggle, so no toggle-desync.
 Standalone throwaway GUI (session table + pause/resume toggle + log). Run with
 the project venv on Windows: .venv\\Scripts\\python.exe poc\\poc_smtc_pause.py
 """
+
 import asyncio
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import scrolledtext, ttk
 
 from winrt.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionManager as SessionManager,
+)
+from winrt.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
 )
 
-STATUS_NAMES = {0: "CLOSED", 1: "OPENED", 2: "CHANGING", 3: "STOPPED", 4: "PLAYING", 5: "PAUSED"}
+STATUS_NAMES = {
+    0: "CLOSED",
+    1: "OPENED",
+    2: "CHANGING",
+    3: "STOPPED",
+    4: "PLAYING",
+    5: "PAUSED",
+}
 
 
 def run_async(coro):
     """Run an awaitable to completion (POC: blocks UI briefly, fine)."""
+
     async def _wrapper():
         return await coro
+
     return asyncio.run(_wrapper())
 
 
@@ -96,7 +108,9 @@ class PocApp:
 
         top = ttk.Frame(root)
         top.pack(fill="x", padx=10, pady=8)
-        self.toggle_btn = ttk.Button(top, text="Pause all playing", command=self.on_toggle)
+        self.toggle_btn = ttk.Button(
+            top, text="Pause all playing", command=self.on_toggle
+        )
         self.toggle_btn.pack(side="left")
         ttk.Button(top, text="Refresh", command=self.refresh).pack(side="left", padx=6)
         self.state_lbl = ttk.Label(top, text="state: PLAYING (nothing paused by us)")
@@ -146,7 +160,9 @@ class PocApp:
             except Exception as e:
                 self.log(f"Pause FAILED: {e}")
                 return
-            targets = sorted({a for a, st, _ in sessions if st == int(PlaybackStatus.PLAYING)})
+            targets = sorted(
+                {a for a, st, _ in sessions if st == int(PlaybackStatus.PLAYING)}
+            )
             if not targets:
                 self.log("Pause: nothing is PLAYING right now.")
                 self.refresh()

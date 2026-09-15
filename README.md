@@ -19,9 +19,9 @@ Automatically pauses your music while you're alive in Counter-Strike 2 and bring
 ## Quick start
 
 1. Build the app: right-click `build_exe.ps1` and choose Run with PowerShell. That gives you `CS2MediaControl.exe`. If you'd rather run from source: `pip install -r requirements.txt && python cs2_media_control.py`.
-2. Install the GSI config: right-click `install_config.ps1` and choose Run with PowerShell. It copies `gamestate_integration_media.cfg` into `<cs2>\game\csgo\cfg`. Restart CS2 afterwards.
-3. Start your music, launch the app (or EXE), then launch CS2.
-4. Sync up once. The app can't ask your player whether it's playing, so it assumes media starts out **playing**. If it shows PLAYING while you're actually paused, just tap Play/Pause once and you're aligned.
+1. Install the GSI config: right-click `install_config.ps1` and choose Run with PowerShell. It copies `gamestate_integration_media.cfg` into `<cs2>\game\csgo\cfg`. Restart CS2 afterwards.
+1. Start your music, launch the app (or EXE), then launch CS2.
+1. Sync up once. The app can't ask your player whether it's playing, so it assumes media starts out **playing**. If it shows PLAYING while you're actually paused, just tap Play/Pause once and you're aligned.
 
 ## Controls
 
@@ -43,6 +43,7 @@ Automatically pauses your music while you're alive in Counter-Strike 2 and bring
 - Keep `gamestate_integration_media.cfg` (`uri http://127.0.0.1:3000/`) in sync with `HOST`/`PORT` in the script.
 - Rebuild the EXE with `build_exe.ps1` from the repo root. Don't hand-edit the built binary.
 - `poc/` holds throwaway experiments (like the SMTC multi-pause prototype). They aren't part of the app.
+- Dev setup: Python 3.11.9 (pinned in `.python-version`), `pip install -r requirements-dev.txt`, hooks run automatically on commit via `pre-commit`.
 
 ## License
 
